@@ -10,7 +10,7 @@
 
 **Compose CV pipelines with YOLO (or SAM), enrich regions with OpenAI vision, and train custom detectors—all from one studio.**
 
-[Features](#-features) · [Quick start](#-quick-start) · [Architecture](#-architecture) · [API](#-api-cheatsheet)
+[Motivation](#motivation) · [Use cases](#use-cases) · [Features](#features) · [Quick start](#quick-start) · [Architecture](#architecture) · [API](#api-cheatsheet)
 
 </div>
 
@@ -39,6 +39,216 @@
 Concept art still lives at [`docs/preview-workflow-studio.svg`](docs/preview-workflow-studio.svg) and [`docs/preview-training-studio.svg`](docs/preview-training-studio.svg) if you prefer SVG placeholders for forks or docs builds.
 
 </details>
+
+---
+
+<a id="motivation"></a>
+
+## 🔥 Part 1: Motivation
+
+Modern computer vision and vision-language models are powerful, but they consistently fail at tasks that require **structured reasoning over complex visual inputs**.
+
+Typical pipelines treat vision as a one-shot problem:
+
+> Image → Model → Output
+
+This approach breaks down when tasks require:
+
+- Spatial reasoning (relationships between objects or regions)
+- Multi-step understanding (analyzing parts individually, then combining)
+- Consistent, structured outputs (JSON, graphs, coordinates)
+- Interaction with complex interfaces (UIs, documents, layouts)
+
+The core issue is that **visual intelligence is inherently compositional**, but most systems are not.
+
+---
+
+### 💡 Key Insight
+
+Better results come from:
+
+- Decomposing images into meaningful regions
+- Extracting intermediate representations (masks, bounding boxes, text)
+- Encoding spatial and semantic relationships explicitly
+- Applying reasoning on top of structured data—not raw pixels
+
+---
+
+### 🚀 What This Repo Does
+
+This project introduces **Composable Vision Workflows for Structured Perception and Reasoning**.
+
+Instead of relying on a single model, it enables:
+
+1. Modular CV steps (segmentation, detection, OCR, etc.)
+2. Region-aware processing (per object / per segment)
+3. Explicit spatial context encoding
+4. Integration with vision-language models for reasoning
+5. Structured outputs (JSON, graphs, coordinates)
+
+---
+
+### 🎯 Why It Matters
+
+This approach makes visual systems:
+
+- More accurate on complex tasks
+- Interpretable (you see every step)
+- Controllable (you define how the model sees)
+- Debuggable (inspect intermediate outputs)
+
+This is not just a CV pipeline tool.
+
+👉 It is a **development environment for building visual reasoning systems**.
+
+---
+
+<a id="use-cases"></a>
+
+## 🚀 Part 2: Use Cases & Example Workflows
+
+### 🏠 1. Floor Plan / Blueprint Understanding
+
+**Goal:** Convert architectural images into structured layouts
+
+**Workflow:**
+
+- Segment rooms
+- Extract each room (crop + mask)
+- Detect doors and windows per room
+- Build spatial adjacency relationships
+- Classify room types using VLM
+- Merge into a structured layout
+
+**Output:**
+
+- JSON with rooms, connections, coordinates
+
+**Use Cases:**
+
+- Real estate automation
+- Indoor navigation
+- Architectural analysis
+
+---
+
+### 📄 2. Document Layout Parsing
+
+**Goal:** Turn complex documents into structured data
+
+**Workflow:**
+
+- Segment layout regions (headers, tables, paragraphs)
+- Run OCR per region
+- Classify section types
+- Reconstruct document hierarchy
+
+**Output:**
+
+- Structured JSON (sections, tables, text blocks)
+
+**Use Cases:**
+
+- Document intelligence
+- Data extraction from PDFs
+- Form processing
+
+---
+
+### 🌐 3. UI/UX Agent Builder (Browser Navigation)
+
+**Goal:** Enable agents to reliably navigate and interact with user interfaces
+
+**Workflow:**
+
+- Detect UI elements (buttons, inputs, links)
+- Segment layout (nav bar, content, modals)
+- Extract text labels (OCR)
+- Build structured UI representation
+- Use VLM to decide next action
+- Convert into executable commands (click, type, scroll)
+
+**Output:**
+
+- Structured action plans with coordinates and targets
+
+**Use Cases:**
+
+- Autonomous web agents
+- RPA (robotic process automation)
+- QA and UI testing
+- AI copilots for software navigation
+
+---
+
+### 🛍️ 4. Retail Shelf Analysis
+
+**Goal:** Understand product layouts and inventory
+
+**Workflow:**
+
+- Detect products
+- Segment shelf regions
+- Classify items
+- Count and organize inventory
+
+**Use Cases:**
+
+- Stock monitoring
+- Retail analytics
+- Planogram compliance
+
+---
+
+### 🚗 5. Scene Understanding (Robotics / Autonomous Systems)
+
+**Goal:** Build structured representations of real-world environments
+
+**Workflow:**
+
+- Segment scene elements
+- Detect objects
+- Estimate spatial relationships
+- Construct scene graph
+
+**Use Cases:**
+
+- Robotics navigation
+- Autonomous driving
+- Environment mapping
+
+---
+
+### 🧬 6. Medical Imaging (Advanced)
+
+**Goal:** Extract structured insights from scans
+
+**Workflow:**
+
+- Segment regions of interest
+- Classify anomalies
+- Track changes over time
+
+**Use Cases:**
+
+- Diagnostics support
+- Longitudinal analysis
+
+---
+
+## ⚡ Summary
+
+This system is designed for problems that involve:
+
+- Multiple objects or regions
+- Spatial relationships
+- Multi-step reasoning
+- Structured outputs
+
+It enables workflows that are not possible with single-model approaches.
+
+👉 Instead of asking a model to “figure everything out,”  
+you **guide the perception process step-by-step and make reasoning explicit**.
 
 ---
 
