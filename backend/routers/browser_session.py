@@ -356,13 +356,15 @@ async def analyze_recording(
 
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    duration = frame_count / fps if fps > 0 else 0.0
-    if duration > MAX_DURATION_SEC:
+    # Chrome MediaRecorder webm often reports frame_count=0 (stream-style container).
+    # Compute header-based duration only when the count is reliable (> 0).
+    header_duration = (frame_count / fps) if (fps > 0 and frame_count > 0) else 0.0
+    if header_duration > MAX_DURATION_SEC:
         cap.release()
         shutil.rmtree(session_dir, ignore_errors=True)
         raise HTTPException(
             status_code=400,
-            detail=f"Video longer than {MAX_DURATION_SEC}s not supported in this MVP (got ~{duration:.1f}s).",
+            detail=f"Video longer than {MAX_DURATION_SEC}s not supported in this MVP (got ~{header_duration:.1f}s).",
         )
 
     interval = max(0.15, min(3.0, float(sample_interval_seconds)))
@@ -372,9 +374,14 @@ async def analyze_recording(
     frames_cache: List[np.ndarray] = []
 
     idx = 0
+    total_frames_read = 0
     while True:
         ret, frame = cap.read()
         if not ret:
+            break
+        total_frames_read += 1
+        # Guard against unbounded webm streams (frame_count=0 in header)
+        if fps > 0 and (idx / fps) > MAX_DURATION_SEC:
             break
         if idx % frame_stride == 0:
             if len(frames_cache) >= MAX_SAMPLES:
@@ -394,6 +401,8 @@ async def analyze_recording(
         idx += 1
 
     cap.release()
+    # Use actual last sampled timestamp as duration (works even when header reports 0)
+    actual_duration = timeline[-1]["t_seconds"] if timeline else header_duration
 
     if len(timeline) < 2:
         shutil.rmtree(session_dir, ignore_errors=True)
@@ -484,7 +493,7 @@ async def analyze_recording(
     return {
         "status": "success",
         "session_id": session_id,
-        "duration_seconds": round(duration, 3),
+        "duration_seconds": round(actual_duration, 3),
         "fps": round(fps, 4),
         "sample_interval_seconds": round(interval, 4),
         "frame_stride": frame_stride,

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import axios from 'axios';
-import { Clapperboard, Loader2, Trash2, Sparkles, Info } from 'lucide-react';
+import { Clapperboard, Loader2, Trash2, Sparkles, Info, Circle, Square } from 'lucide-react';
 import { cn } from '../utils';
 
 const API = 'http://localhost:8000';
@@ -16,14 +16,82 @@ export function BrowserSessionLearning() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
+  // In-browser recording state
+  const [recording, setRecording] = useState(false);
+  const [recDuration, setRecDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    setFile(f ?? null);
-    setResult(null);
+  useEffect(() => {
+    return () => {
+      // cleanup on unmount
+      timerRef.current && clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  const canSubmit = useMemo(() => !!file && !busy && !recording, [file, busy, recording]);
+
+  const startRecording = async () => {
     setError(null);
+    setResult(null);
+    setFile(null);
+    setRecDuration(0);
+    chunksRef.current = [];
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 } },
+        audio: false,
+      });
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not start screen capture.');
+      return;
+    }
+    streamRef.current = stream;
+
+    const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+      .find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
+
+    const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    mediaRecorderRef.current = mr;
+
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+
+    mr.onstop = () => {
+      timerRef.current && clearInterval(timerRef.current);
+      const blob = new Blob(chunksRef.current, { type: mimeType || 'video/webm' });
+      const ext = (mimeType.includes('mp4') ? 'mp4' : 'webm');
+      const recorded = new File([blob], `recording.${ext}`, { type: blob.type });
+      setFile(recorded);
+      setRecording(false);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+
+    // Stop recording if the user ends the share via browser UI
+    stream.getVideoTracks()[0].onended = () => {
+      if (mr.state !== 'inactive') mr.stop();
+    };
+
+    mr.start(250); // collect data every 250ms
+    setRecording(true);
+    timerRef.current = setInterval(() => setRecDuration((d) => d + 1), 1000);
   };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const fmtDuration = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   const onPointerLogFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -92,7 +160,7 @@ export function BrowserSessionLearning() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Session learning</h1>
             <p className="text-xs text-slate-500 max-w-xl">
-              Upload a browser screen recording. We sample frames, run detection, rank visual transitions, and optionally ask a VLM what control likely changed—first step toward learning clicks from demos.
+              Record your screen directly in the browser. We sample frames, run detection, rank visual transitions, and optionally ask a VLM what control likely changed—first step toward learning clicks from demos.
             </p>
           </div>
         </div>
@@ -100,15 +168,50 @@ export function BrowserSessionLearning() {
 
       <div className="flex-1 flex min-h-0">
         <aside className="w-[340px] shrink-0 border-r border-slate-800 p-4 flex flex-col gap-4 bg-slate-900/40 overflow-y-auto">
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="text-slate-400 font-medium">Recording</span>
-            <input
-              type="file"
-              accept="video/mp4,video/webm,video/quicktime,.mkv,.avi"
-              onChange={onFile}
-              className="text-xs text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-slate-200"
-            />
-          </label>
+          {/* ── Screen recorder ── */}
+          <div className="flex flex-col gap-2">
+            <span className="text-sm text-slate-400 font-medium">Recording</span>
+            {!recording && !file && (
+              <button
+                type="button"
+                onClick={startRecording}
+                disabled={busy}
+                className="flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Circle size={14} className="fill-white" /> Record screen
+              </button>
+            )}
+            {recording && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-sm text-rose-400 font-mono animate-pulse">
+                  <Circle size={10} className="fill-rose-400" />
+                  Recording {fmtDuration(recDuration)}
+                </div>
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                >
+                  <Square size={14} className="fill-white" /> Stop recording
+                </button>
+              </div>
+            )}
+            {file && !recording && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-emerald-400 truncate">
+                  ✓ Captured {(file.size / 1024 / 1024).toFixed(1)} MB · {fmtDuration(recDuration)}
+                </span>
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={busy}
+                  className="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-50 shrink-0"
+                >
+                  Re-record
+                </button>
+              </div>
+            )}
+          </div>
 
           <label className="flex flex-col gap-2 text-sm">
             <span className="text-slate-400 font-medium">Pointer log JSON (optional)</span>
@@ -201,7 +304,7 @@ export function BrowserSessionLearning() {
             <div className="m-4 rounded-lg border border-rose-900/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{error}</div>
           )}
           {!result && !error && !busy && (
-            <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">Upload a screen recording to begin.</div>
+            <div className="flex-1 flex items-center justify-center text-slate-600 text-sm">Record your screen to begin — click <strong className="text-slate-500 mx-1">Record screen</strong> on the left.</div>
           )}
           {busy && (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-500">
