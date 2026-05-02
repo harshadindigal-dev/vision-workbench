@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="200" viewBox="0 0 920 200" role="img" aria-label="CV LLM Pipeline">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="50%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#020617"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#38bdf8"/>
+      <stop offset="100%" style="stop-color:#a78bfa"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#bg)" rx="12"/>
+  <rect x="16" y="16" width="888" height="168" fill="none" stroke="#334155" stroke-width="1" rx="8" opacity="0.6"/>
+  <text x="460" y="78" text-anchor="middle" fill="#f1f5f9" font-family="ui-sans-serif,system-ui,sans-serif" font-size="36" font-weight="700">CV + LLM Pipeline</text>
+  <text x="460" y="112" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15">YOLO regions · OpenAI vision · Graph output · Custom training studio</text>
+  <rect x="260" y="132" width="400" height="4" rx="2" fill="url(#accent)" filter="url(#glow)" opacity="0.95"/>
+  <g opacity="0.35" font-family="ui-monospace,monospace" font-size="11" fill="#64748b">
+    <text x="48" y="185">FastAPI</text>
+    <text x="140" y="185">Ultralytics</text>
+    <text x="250" y="185">React 19</text>
+    <text x="340" y="185">Vite</text>
+    <text x="410" y="185">Tailwind</text>
+    <text x="830" y="185" text-anchor="end">pipeline/run</text>
+  </g>
+</svg>

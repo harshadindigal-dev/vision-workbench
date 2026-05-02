@@ -1,0 +1,5 @@
+names:
+  0: object
+path: /Users/harshadinidgal/.gemini/antigravity/scratch/cv-llm-pipeline/backend/datasets/current
+train: images/train
+val: images/train

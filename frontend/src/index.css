@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-850: #151e2e;
+  --color-slate-950: #0b0f19;
+  --color-ink-950: #0a0c10;
+  --color-ink-900: #111317;
+  --color-ink-850: #161b22;
+  --color-ink-800: #1e2024;
+  --color-ink-700: #282a2e;
+  --color-ink-650: #30363d;
+  --color-ink-600: #3b494c;
+  --color-cyan-precision: #00e5ff;
+}
+
+@layer base {
+  body {
+    @apply bg-ink-950 text-slate-200 antialiased;
+  }
+}
+
+.workflow-canvas-grid {
+  background-color: #111317;
+  background-image:
+    radial-gradient(rgba(132, 147, 150, 0.22) 1px, transparent 1px),
+    linear-gradient(rgba(0, 229, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.035) 1px, transparent 1px);
+  background-size: 24px 24px, 96px 96px, 96px 96px;
+  background-position: 0 0, -1px -1px, -1px -1px;
+}
+
+.technical-panel {
+  @apply border border-ink-650 bg-ink-850;
+}
+
+.technical-label {
+  @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400;
+}
+
+.technical-value {
+  @apply font-mono text-xs text-cyan-precision;
+}
+
+/* Custom scrollbar for dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-slate-900;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-700 rounded;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-600;
+}

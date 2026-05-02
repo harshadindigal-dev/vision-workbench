@@ -1,0 +1,28 @@
+# Python
+backend/venv/
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Local Node bundles (never commit)
+node-v*-darwin-arm64/
+node-v*-darwin-arm64.tar.gz
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Large downloaded weights (optional — uncomment if you don’t want weights in git)
+# *.pt
