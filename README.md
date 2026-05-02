@@ -14,6 +14,8 @@
 
 </div>
 
+> **Branch focus — [`feat/browser-session-recording-learning`](https://github.com/harshadindigal-dev/vision-workbench/tree/feat/browser-session-recording-learning):** capture **browser screen recordings**, infer **what was clicked** (and when), and turn demos into **structured action traces** that plug into composable CV + VLM pipelines. **[Design doc →](docs/browser-session-recording-learning.md)**
+
 ---
 
 ## Preview
