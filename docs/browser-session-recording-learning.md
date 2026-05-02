@@ -8,10 +8,11 @@ It builds directly on Vision Workbench’s idea: **decompose** the visual stream
 
 In the app today:
 
-- **Backend:** `POST /api/browser-session/analyze` accepts a screen recording (`mp4`, `webm`, `mov`, …), samples frames on an interval, runs **YOLO** per sample, computes **pairwise frame-diff scores** to rank likely interaction moments, and optionally calls **OpenAI** with before/after JPEG pairs plus detection hints (`use_vlm=true`, requires `OPENAI_KEY`). Sessions cache thumbnails under `backend/tmp_browser_sessions/` (deletable via `DELETE /api/browser-session/session/{id}`).
-- **Frontend:** Tab **Session learning** — upload video, toggle VLM explanations, inspect **learned transition hypotheses** and raw JSON.
+- **Backend:** `POST /api/browser-session/analyze` accepts a screen recording (`mp4`, `webm`, `mov`, …), samples frames on an interval, runs **YOLO** per sample (optional **`detector_model`** path resolved under `backend/`), computes **pairwise frame-diff scores** for hints, optionally calls **OpenAI** on frame pairs (`use_vlm=true`, requires `OPENAI_KEY`). Multipart field **`pointer_events_json`** merges logged **`pointerdown`** positions + **`target_rect`** into **`ground_truth_pointer_events`** (viewport coordinates scaled to each sampled frame).
+- **Frontend:** Tab **Session learning** — upload video, optional pointer JSON, toggle VLM, inspect **ground-truth alignment**, hypotheses, raw JSON.
+- **Chrome extension:** **`extensions/pointer-logger`** — MV3 helper; **Align clock** → start screen recording aligned to `performance.now()` → **`pointerdown`** + **`getBoundingClientRect`** → **Export JSON**.
 
-This is **not** DOM-ground-truth click logging yet; it is an end-to-end slice from **pixels → timeline → hypotheses** that we can tighten with cursor tracking or a browser extension.
+Remaining gaps: cursor overlay inside the pixels-only recording path (without compositing), multi-monitor scaling, and richer DOM roles beyond rects/tag/text—those belong in the next iteration.
 
 ---
 

@@ -261,8 +261,14 @@ you **guide the perception process step-by-step and make reasoning explicit**.
 | **Workflow Studio** | Drag-and-connect steps: ingest → detector (YOLO/SAM) → context bundle → OpenAI vision (optional JSON schema) → graph output. |
 | **Vision + LLM** | Regions get crops + spatial metadata; the VLM runs per region with optional strict-ish JSON schema validation. |
 | **Training Studio** | Upload images, annotate boxes, pre-annotate / auto-annotate helpers, class management, YOLO training via Ultralytics. |
-| **Session learning** | Upload a browser screen recording: sampled timeline + YOLO boxes per frame, ranked **interaction hints** via frame differencing, optional **VLM** hypotheses for what control changed between frames (`/api/browser-session/analyze`). |
+| **Session learning** | Upload a browser screen recording: sampled timeline + YOLO boxes per frame, ranked **interaction hints** via frame differencing, optional **VLM** hypotheses; optional **`pointer_events_json`** merges **extension-logged `pointerdown` + rects** into **`ground_truth_pointer_events`**. Chrome MV3 helper: **`extensions/pointer-logger`**. |
 | **API** | FastAPI backend with CORS for local dev; static serving for dataset training images. |
+
+### Session learning — supervision stack
+
+- **Without pointer JSON:** hints stay **visual change** + generic **COCO** weights + optional **VLM** — useful but **not** literal click labels.
+- **With pointer JSON:** install **`extensions/pointer-logger`** (Chrome → Load unpacked) → **Align clock** → start screen capture immediately → interact → **Export JSON** → attach next to the video in Session learning. The API aligns **`pointerdown`** coordinates and **`getBoundingClientRect`** against sampled frames (viewport scaled to frame size) and returns **`ground_truth_pointer_events`** with detector hits / IoU cues.
+- **UI-specialized detector:** train in **Training Studio** and pass **`detector_model`** (paths under `backend/` are resolved automatically).
 
 ---
 
@@ -376,7 +382,7 @@ Training flows may use additional keys depending on your `routers/training.py` s
 |--------|------|---------|
 | `POST` | `/api/pipeline/run` | Multipart: image + `pipeline_config` JSON → regions + graph |
 | — | `/api/training/*` | Dataset upload, annotations, training job control |
-| `POST` | `/api/browser-session/analyze` | Multipart: video + sampling options → timeline, interaction hints, optional VLM hypotheses (`use_vlm`, `max_vlm_hints`) |
+| `POST` | `/api/browser-session/analyze` | Multipart: video + sampling options → timeline, interaction hints, optional VLM hypotheses (`use_vlm`, `max_vlm_hints`), optional **`pointer_events_json`** (array or `{events:[]}`) for supervision merge |
 | `DELETE` | `/api/browser-session/session/{id}` | Remove cached thumbnails for a session |
 | `GET` | `/datasets/images/train/...` | Training image assets (static) |
 

@@ -95,6 +95,155 @@ def _sample_gray_small(frame_bgr: np.ndarray, side: int = 160) -> np.ndarray:
     return cv2.resize(gray, (side, side), interpolation=cv2.INTER_AREA)
 
 
+def _resolved_detector_path(model_name: str) -> str:
+    if os.path.isabs(model_name) and os.path.isfile(model_name):
+        return model_name
+    candidate = BACKEND_ROOT / model_name
+    if candidate.is_file():
+        return str(candidate)
+    return model_name
+
+
+def _scale_viewport_to_frame(
+    vx: float, vy: float, vw: Optional[float], vh: Optional[float], fw: int, fh: int
+) -> Tuple[float, float]:
+    if vw and vh and vw > 0 and vh > 0:
+        sx = vx * (fw / vw)
+        sy = vy * (fh / vh)
+        return sx, sy
+    return vx, vy
+
+
+def _point_in_bbox(px: float, py: float, x1: float, y1: float, x2: float, y2: float, slack: float = 4.0) -> bool:
+    lo_x, hi_x = (x1, x2) if x1 <= x2 else (x2, x1)
+    lo_y, hi_y = (y1, y2) if y1 <= y2 else (y2, y1)
+    return lo_x - slack <= px <= hi_x + slack and lo_y - slack <= py <= hi_y + slack
+
+
+def _iou_xyxy(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    aa = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    ba = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = aa + ba - inter
+    return float(inter / union) if union > 0 else 0.0
+
+
+def _parse_pointer_payload(raw: Optional[str]) -> List[Dict[str, Any]]:
+    if not raw or not str(raw).strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"pointer_events_json is not valid JSON: {e}") from e
+    if isinstance(data, list):
+        return list(data)
+    if isinstance(data, dict):
+        ev = data.get("events")
+        if isinstance(ev, list):
+            return list(ev)
+    raise HTTPException(status_code=400, detail="pointer_events_json must be a JSON array or { \"events\": [...] }")
+
+
+def _merge_pointer_supervision(
+    pointer_events: List[Dict[str, Any]],
+    timeline: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Attach nearest-frame detections and optional IoU vs logged target_rect (viewport-normalized after scale)."""
+    out: List[Dict[str, Any]] = []
+    if not pointer_events or not timeline:
+        return out
+
+    times = [float(timeline[i]["t_seconds"]) for i in range(len(timeline))]
+
+    for ev in pointer_events:
+        try:
+            t_ev = float(ev.get("t_seconds", ev.get("t", -1)))
+        except (TypeError, ValueError):
+            continue
+        if t_ev < 0:
+            continue
+
+        vw = ev.get("viewport_width") or ev.get("viewport_w")
+        vh = ev.get("viewport_height") or ev.get("viewport_h")
+        try:
+            vw_f = float(vw) if vw is not None else None
+            vh_f = float(vh) if vh is not None else None
+        except (TypeError, ValueError):
+            vw_f, vh_f = None, None
+
+        sid = min(range(len(times)), key=lambda i: abs(times[i] - t_ev))
+        sample = timeline[sid]
+        fw, fh = int(sample["width"]), int(sample["height"])
+
+        cx = float(ev.get("client_x", ev.get("x", -1)))
+        cy = float(ev.get("client_y", ev.get("y", -1)))
+        if cx < 0 or cy < 0:
+            continue
+        fx, fy = _scale_viewport_to_frame(cx, cy, vw_f, vh_f, fw, fh)
+
+        dets = sample.get("detections") or []
+        containing = []
+        for j, det in enumerate(dets):
+            x1, y1, x2, y2 = det["bbox_xyxy"]
+            if _point_in_bbox(fx, fy, x1, y1, x2, y2):
+                containing.append(j)
+
+        best_idx = None
+        best_iou = 0.0
+        tr = ev.get("target_rect") or ev.get("rect")
+        if isinstance(tr, dict):
+            tl = float(tr.get("left", tr.get("x", 0)))
+            tt = float(tr.get("top", tr.get("y", 0)))
+            tw = float(tr.get("width", tr.get("w", 0)))
+            th = float(tr.get("height", tr.get("h", 0)))
+            bx2, by2 = tl + tw, tt + th
+            scr_tl_x, scr_tl_y = _scale_viewport_to_frame(tl, tt, vw_f, vh_f, fw, fh)
+            scr_br_x, scr_br_y = _scale_viewport_to_frame(bx2, by2, vw_f, vh_f, fw, fh)
+            dom_bb = (
+                min(scr_tl_x, scr_br_x),
+                min(scr_tl_y, scr_br_y),
+                max(scr_tl_x, scr_br_x),
+                max(scr_tl_y, scr_br_y),
+            )
+            for j, det in enumerate(dets):
+                x1, y1, x2, y2 = det["bbox_xyxy"]
+                det_bb = (float(x1), float(y1), float(x2), float(y2))
+                iou = _iou_xyxy(dom_bb, det_bb)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_idx = j
+
+        supervision = "hit_detection" if containing else "miss_no_box_at_point"
+        if containing and best_idx is not None and best_idx in containing:
+            supervision = "hit_detection_dom_consistent"
+        elif containing and best_idx is not None and best_idx not in containing:
+            supervision = "ambiguous_dom_vs_detector"
+
+        out.append(
+            {
+                "t_seconds": round(t_ev, 4),
+                "nearest_sample_index": sid,
+                "nearest_sample_t": sample["t_seconds"],
+                "frame_xy": [round(fx, 2), round(fy, 2)],
+                "tag": ev.get("tag"),
+                "label_text": (ev.get("label_text") or ev.get("text") or "")[:300],
+                "containing_detection_indices": containing,
+                "best_dom_detector_iou": round(best_iou, 5),
+                "best_dom_detector_index": best_idx,
+                "supervision": supervision,
+            }
+        )
+
+    return out
+
+
 def _pair_diff_score(a_bgr: np.ndarray, b_bgr: np.ndarray) -> float:
     ga = _sample_gray_small(a_bgr).astype(np.float32) / 255.0
     gb = _sample_gray_small(b_bgr).astype(np.float32) / 255.0
@@ -170,12 +319,15 @@ async def analyze_recording(
     use_vlm: str = Form("false"),
     max_vlm_hints: int = Form(6),
     vlm_model: str = Form("gpt-4o-mini"),
+    pointer_events_json: Optional[str] = Form(None),
 ):
     """
     Upload a screen recording (mp4/webm/mov). Returns sampled timeline with generic detections,
     frame-diff interaction hints, and optional VLM explanations for the strongest transitions.
+    Optional pointer_events_json: ground-truth pointerdown log (e.g. from extensions/pointer-logger).
     """
     use_vlm_flag = str(use_vlm).lower() in ("true", "1", "yes", "on")
+    pointer_events = _parse_pointer_payload(pointer_events_json)
 
     suffix = Path(file.filename or "recording.bin").suffix.lower()
     if suffix not in {".mp4", ".webm", ".mov", ".mkv", ".avi"}:
@@ -190,6 +342,12 @@ async def analyze_recording(
     session_dir.mkdir(parents=True, exist_ok=True)
     video_path = session_dir / f"video{suffix}"
     video_path.write_bytes(raw)
+
+    if pointer_events:
+        raw_pe = (pointer_events_json or "").strip()
+        (session_dir / "pointer_events.json").write_text(raw_pe if raw_pe else json.dumps({"events": pointer_events}))
+
+    detector_resolved = _resolved_detector_path(detector_model)
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -223,7 +381,7 @@ async def analyze_recording(
                 break
             t = idx / fps if fps > 0 else 0.0
             frames_cache.append(frame.copy())
-            det, fw, fh = _run_detector_on_frame(frame, detector_model, detector_confidence)
+            det, fw, fh = _run_detector_on_frame(frame, detector_resolved, detector_confidence)
             timeline.append(
                 {
                     "t_seconds": round(t, 4),
@@ -259,6 +417,8 @@ async def analyze_recording(
                 "frame_diff_score": round(float(scores[i]), 6),
             }
         )
+
+    ground_truth_pointer_events = _merge_pointer_supervision(pointer_events, timeline)
 
     learned_events: List[Dict[str, Any]] = []
 
@@ -303,7 +463,23 @@ async def analyze_recording(
         cv2.imwrite(str(thumbs_dir / f"{i:04d}.jpg"), frame)
 
     meta_path = session_dir / "timeline_meta.json"
-    meta_path.write_text(json.dumps({"timeline": timeline, "interaction_hints": interaction_hints}, indent=2))
+    meta_path.write_text(
+        json.dumps(
+            {
+                "timeline": timeline,
+                "interaction_hints": interaction_hints,
+                "ground_truth_pointer_events": ground_truth_pointer_events,
+            },
+            indent=2,
+        )
+    )
+
+    notes_parts = [
+        "Visual-diff hints rank discontinuity — without a pointer log they are not guaranteed clicks.",
+        "YOLO defaults are COCO; train UI classes in Training Studio and pass weights via detector_model.",
+        "Optional pointer_events_json (extension pointerdown + getBoundingClientRect) adds supervision alignment.",
+        "VLM pair explanations are hypotheses, not labels.",
+    ]
 
     return {
         "status": "success",
@@ -314,14 +490,13 @@ async def analyze_recording(
         "frame_stride": frame_stride,
         "samples": len(timeline),
         "detector_model": detector_model,
+        "detector_resolved_path": detector_resolved,
+        "pointer_events_received": len(pointer_events),
+        "ground_truth_pointer_events": ground_truth_pointer_events,
         "timeline": timeline,
         "interaction_hints": interaction_hints,
         "learned_events": learned_events,
-        "notes": (
-            "Hints rank visual discontinuity — not ground-truth clicks. "
-            "Pair with DOM logs or cursor tracking later for supervision. "
-            "YOLO labels are generic (COCO); VLM explanations aim at UI semantics."
-        ),
+        "notes": " ".join(notes_parts),
     }
 
 

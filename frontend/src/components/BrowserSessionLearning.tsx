@@ -8,6 +8,7 @@ const API = 'http://localhost:8000';
 
 export function BrowserSessionLearning() {
   const [file, setFile] = useState<File | null>(null);
+  const [pointerEventsJson, setPointerEventsJson] = useState<string | null>(null);
   const [intervalSec, setIntervalSec] = useState('0.45');
   const [useVlm, setUseVlm] = useState(false);
   const [maxHints, setMaxHints] = useState('6');
@@ -24,6 +25,22 @@ export function BrowserSessionLearning() {
     setError(null);
   };
 
+  const onPointerLogFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) {
+      setPointerEventsJson(null);
+      return;
+    }
+    try {
+      const text = await f.text();
+      setPointerEventsJson(text.trim() ? text : null);
+    } catch {
+      setPointerEventsJson(null);
+    }
+    setResult(null);
+    setError(null);
+  };
+
   const analyze = async () => {
     if (!file) return;
     setBusy(true);
@@ -34,6 +51,7 @@ export function BrowserSessionLearning() {
     fd.append('sample_interval_seconds', intervalSec);
     fd.append('use_vlm', useVlm ? 'true' : 'false');
     fd.append('max_vlm_hints', maxHints);
+    if (pointerEventsJson) fd.append('pointer_events_json', pointerEventsJson);
 
     try {
       const res = await axios.post(`${API}/api/browser-session/analyze`, fd, {
@@ -92,6 +110,22 @@ export function BrowserSessionLearning() {
             />
           </label>
 
+          <label className="flex flex-col gap-2 text-sm">
+            <span className="text-slate-400 font-medium">Pointer log JSON (optional)</span>
+            <span className="text-[11px] text-slate-500 leading-snug">
+              From Chrome extension <code className="text-slate-400">extensions/pointer-logger</code> (Align clock → record → Export).
+            </span>
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={onPointerLogFile}
+              className="text-xs text-slate-400 file:mr-2 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-slate-200"
+            />
+            {pointerEventsJson && (
+              <span className="text-[11px] text-emerald-500/90">Attached ({pointerEventsJson.length} chars)</span>
+            )}
+          </label>
+
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-slate-400">Sample interval (seconds)</span>
             <input
@@ -133,11 +167,22 @@ export function BrowserSessionLearning() {
             {busy ? 'Analyzing…' : 'Analyze recording'}
           </button>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-950/80 p-3 text-xs text-slate-500 flex gap-2 leading-relaxed">
-            <Info size={16} className="shrink-0 mt-0.5 text-slate-600" />
-            <span>
-              Detection uses generic YOLO weights (not UI-specialized yet). Diff scores highlight visual change—not guaranteed clicks. Combine with DOM logging later for ground truth.
-            </span>
+          <div className="rounded-lg border border-emerald-900/35 bg-emerald-950/15 p-3 text-xs text-slate-400 flex gap-2 leading-relaxed">
+            <Info size={16} className="shrink-0 mt-0.5 text-emerald-500/80" />
+            <div className="space-y-2">
+              <p>
+                <strong className="text-slate-300">Without a pointer log:</strong> hints = visual change + generic COCO YOLO + optional VLM —{' '}
+                <strong className="text-slate-300">not</strong> guaranteed clicks.
+              </p>
+              <p>
+                <strong className="text-slate-300">With pointer JSON:</strong> real <code className="text-emerald-200/90">pointerdown</code> +{' '}
+                <code className="text-emerald-200/90">getBoundingClientRect</code> merges into{' '}
+                <strong className="text-slate-300">ground_truth_pointer_events</strong> (scaled viewport → frame).
+              </p>
+              <p>
+                Train <strong className="text-slate-300">UI-specific weights</strong> in Training Studio and set detector model path for tighter boxes.
+              </p>
+            </div>
           </div>
 
           {result?.session_id && (
@@ -179,8 +224,50 @@ export function BrowserSessionLearning() {
                 <span>
                   Detector <b className="text-slate-200">{result.detector_model}</b>
                 </span>
+                {typeof result.pointer_events_received === 'number' && (
+                  <span>
+                    Pointer events <b className="text-slate-200">{result.pointer_events_received}</b>
+                  </span>
+                )}
               </div>
+              {result.detector_resolved_path && (
+                <p className="text-[10px] text-slate-600 shrink-0 truncate" title={result.detector_resolved_path}>
+                  Resolved weights: {result.detector_resolved_path}
+                </p>
+              )}
               {result.notes && <p className="text-xs text-slate-500 shrink-0">{result.notes}</p>}
+
+              {Array.isArray(result.ground_truth_pointer_events) && result.ground_truth_pointer_events.length > 0 && (
+                <div className="shrink-0 rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-3">
+                  <h2 className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-2">
+                    Ground-truth pointer alignment
+                  </h2>
+                  <ul className="space-y-2 max-h-[220px] overflow-y-auto">
+                    {result.ground_truth_pointer_events.map((ev: any, idx: number) => (
+                      <li key={idx} className="text-xs border border-slate-800 rounded-md p-2 bg-slate-900/60">
+                        <div className="text-slate-500 mb-1">
+                          t≈{ev.t_seconds}s · sample #{ev.nearest_sample_index}
+                          <span
+                            className={
+                              ev.supervision?.includes('hit') ? ' text-emerald-400 ml-2' : ' text-amber-400 ml-2'
+                            }
+                          >
+                            {ev.supervision}
+                          </span>
+                        </div>
+                        <div className="text-slate-200">
+                          {(ev.tag ?? '?').toLowerCase()} · {(ev.label_text || '').slice(0, 120)}
+                          {(ev.label_text || '').length > 120 ? '…' : ''}
+                        </div>
+                        <div className="text-slate-500 mt-1 font-mono text-[10px]">
+                          frame_xy [{ev.frame_xy?.join(', ')}] · hits {JSON.stringify(ev.containing_detection_indices)}
+                          {typeof ev.best_dom_detector_iou === 'number' ? ` · dom∩det IoU ${ev.best_dom_detector_iou}` : ''}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {Array.isArray(result.learned_events) && result.learned_events.length > 0 && (
                 <div className="shrink-0 rounded-lg border border-violet-900/40 bg-violet-950/20 p-3">

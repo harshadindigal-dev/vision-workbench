@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Vision Workbench Pointer Logger",
+  "version": "0.1.0",
+  "description": "Logs pointerdown + target rects aligned to a recording clock for Vision Workbench session learning.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "action": { "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
