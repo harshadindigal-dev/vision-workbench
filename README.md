@@ -261,6 +261,7 @@ you **guide the perception process step-by-step and make reasoning explicit**.
 | **Workflow Studio** | Drag-and-connect steps: ingest → detector (YOLO/SAM) → context bundle → OpenAI vision (optional JSON schema) → graph output. |
 | **Vision + LLM** | Regions get crops + spatial metadata; the VLM runs per region with optional strict-ish JSON schema validation. |
 | **Training Studio** | Upload images, annotate boxes, pre-annotate / auto-annotate helpers, class management, YOLO training via Ultralytics. |
+| **Session learning** | Upload a browser screen recording: sampled timeline + YOLO boxes per frame, ranked **interaction hints** via frame differencing, optional **VLM** hypotheses for what control changed between frames (`/api/browser-session/analyze`). |
 | **API** | FastAPI backend with CORS for local dev; static serving for dataset training images. |
 
 ---
@@ -274,11 +275,13 @@ flowchart LR
   subgraph UI["React + Vite + Tailwind"]
     W[Workflow Studio]
     T[Training Studio]
+    S[Session learning]
   end
 
   subgraph API["FastAPI :8000"]
     P["POST /api/pipeline/run"]
     TR["/api/training/*"]
+    BS["POST /api/browser-session/analyze"]
     ST["/datasets/images/train"]
   end
 
@@ -291,6 +294,7 @@ flowchart LR
 
   W --> P
   T --> TR
+  S --> BS
   W -. preview .-> ST
 
   P --> D --> C --> L --> O
@@ -358,7 +362,7 @@ Create a `.env` file at the **project root** and/or under `backend/` (the code l
 
 | Variable | Used for |
 |----------|-----------|
-| `OPENAI_KEY` | Required when running **LLM / vision** nodes (`LLMNode`). |
+| `OPENAI_KEY` | Required when running **LLM / vision** nodes (`LLMNode`), and when **Session learning** uses **Explain transitions with VLM**. |
 
 Training flows may use additional keys depending on your `routers/training.py` setup—check that file for `load_dotenv` and client initialization.
 
@@ -372,6 +376,8 @@ Training flows may use additional keys depending on your `routers/training.py` s
 |--------|------|---------|
 | `POST` | `/api/pipeline/run` | Multipart: image + `pipeline_config` JSON → regions + graph |
 | — | `/api/training/*` | Dataset upload, annotations, training job control |
+| `POST` | `/api/browser-session/analyze` | Multipart: video + sampling options → timeline, interaction hints, optional VLM hypotheses (`use_vlm`, `max_vlm_hints`) |
+| `DELETE` | `/api/browser-session/session/{id}` | Remove cached thumbnails for a session |
 | `GET` | `/datasets/images/train/...` | Training image assets (static) |
 
 Interactive docs: **`http://localhost:8000/docs`** (Swagger UI).

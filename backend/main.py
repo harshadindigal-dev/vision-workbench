@@ -11,11 +11,12 @@ from PIL import Image
 import io
 
 from fastapi.staticfiles import StaticFiles
-from routers import training
+from routers import browser_session, training
 
 app = FastAPI(title="CV+LLM Pipeline Builder API")
 
 app.include_router(training.router)
+app.include_router(browser_session.router)
 
 import os
 os.makedirs("datasets/current/images/train", exist_ok=True)

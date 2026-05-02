@@ -4,6 +4,15 @@ This branch explores turning **screen recordings of real browser navigation** in
 
 It builds directly on Vision Workbench’s idea: **decompose** the visual stream, attach **spatial context**, run **VLMs for reasoning**, and emit **graphs / JSON** instead of opaque “model guessed it.”
 
+### Implemented MVP (core functionality)
+
+In the app today:
+
+- **Backend:** `POST /api/browser-session/analyze` accepts a screen recording (`mp4`, `webm`, `mov`, …), samples frames on an interval, runs **YOLO** per sample, computes **pairwise frame-diff scores** to rank likely interaction moments, and optionally calls **OpenAI** with before/after JPEG pairs plus detection hints (`use_vlm=true`, requires `OPENAI_KEY`). Sessions cache thumbnails under `backend/tmp_browser_sessions/` (deletable via `DELETE /api/browser-session/session/{id}`).
+- **Frontend:** Tab **Session learning** — upload video, toggle VLM explanations, inspect **learned transition hypotheses** and raw JSON.
+
+This is **not** DOM-ground-truth click logging yet; it is an end-to-end slice from **pixels → timeline → hypotheses** that we can tighten with cursor tracking or a browser extension.
+
 ---
 
 ## Why this fits Vision Workbench
