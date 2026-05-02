@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { PipelineLinearBuilder } from './components/PipelineLinearBuilder';
 import { TrainingStudio } from './components/TrainingStudio';
-import { Workflow, PlaySquare } from 'lucide-react';
+import { BrowserSessionLearning } from './components/BrowserSessionLearning';
+import { Workflow, PlaySquare, Clapperboard } from 'lucide-react';
 import { cn } from './utils';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'training'>('pipeline');
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'training' | 'session'>('pipeline');
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
@@ -36,12 +37,30 @@ function App() {
             <PlaySquare size={16} />
             Train Custom Model
           </button>
+          <button
+            onClick={() => setActiveTab('session')}
+            className={cn(
+              "px-6 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-all",
+              activeTab === 'session'
+                ? "bg-slate-800 text-slate-200 shadow"
+                : "text-slate-500 hover:text-slate-300 hover:bg-slate-900"
+            )}
+          >
+            <Clapperboard size={16} />
+            Session learning
+          </button>
         </div>
       </header>
 
       {/* Main Content Area */}
       <div className="flex-1 relative">
-        {activeTab === 'pipeline' ? <PipelineLinearBuilder /> : <TrainingStudio />}
+        {activeTab === 'pipeline' ? (
+          <PipelineLinearBuilder />
+        ) : activeTab === 'training' ? (
+          <TrainingStudio />
+        ) : (
+          <BrowserSessionLearning />
+        )}
       </div>
     </div>
   );

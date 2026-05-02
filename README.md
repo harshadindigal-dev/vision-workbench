@@ -14,6 +14,8 @@
 
 </div>
 
+> **Branch focus — [`feat/browser-session-recording-learning`](https://github.com/harshadindigal-dev/vision-workbench/tree/feat/browser-session-recording-learning):** **record your screen directly in the browser** (no file upload needed), infer **what was clicked** (and when), and turn demos into **structured action traces** that plug into composable CV + VLM pipelines. **[Design doc →](docs/browser-session-recording-learning.md)**
+
 ---
 
 ## Preview
@@ -259,7 +261,23 @@ you **guide the perception process step-by-step and make reasoning explicit**.
 | **Workflow Studio** | Drag-and-connect steps: ingest → detector (YOLO/SAM) → context bundle → OpenAI vision (optional JSON schema) → graph output. |
 | **Vision + LLM** | Regions get crops + spatial metadata; the VLM runs per region with optional strict-ish JSON schema validation. |
 | **Training Studio** | Upload images, annotate boxes, pre-annotate / auto-annotate helpers, class management, YOLO training via Ultralytics. |
+| **Session learning** | **Record your screen directly in the browser** (no file needed — uses `MediaRecorder` + `getDisplayMedia`): sampled timeline + YOLO boxes per frame, ranked **interaction hints** via frame differencing, optional **VLM** hypotheses; optional **`pointer_events_json`** merges **extension-logged `pointerdown` + rects** into **`ground_truth_pointer_events`**. Chrome MV3 helper: **`extensions/pointer-logger`**. |
 | **API** | FastAPI backend with CORS for local dev; static serving for dataset training images. |
+
+### Session learning — how to use
+
+1. Open the **Session learning** tab.
+2. Click **Record screen** — the browser's built-in screen-share picker opens (tab, window, or entire display).
+3. Perform the workflow you want to analyse; a live `MM:SS` timer and pulsing indicator confirm recording.
+4. Click **Stop recording** (or end the share from the browser toolbar). The captured video is held in memory — no file to save.
+5. Optionally attach a **Pointer log JSON** from the Chrome extension (`extensions/pointer-logger`) for ground-truth click alignment.
+6. Adjust **Sample interval** and optional **VLM** settings, then click **Analyze recording**.
+
+### Session learning — supervision stack
+
+- **Without pointer JSON:** hints stay **visual change** + generic **COCO** weights + optional **VLM** — useful but **not** literal click labels.
+- **With pointer JSON:** install **`extensions/pointer-logger`** (Chrome → Load unpacked) → **Align clock** → start screen recording immediately → interact → **Export JSON** → attach in Session learning. The API aligns **`pointerdown`** coordinates and **`getBoundingClientRect`** against sampled frames (viewport scaled to frame size) and returns **`ground_truth_pointer_events`** with detector hits / IoU cues.
+- **UI-specialized detector:** train in **Training Studio** and pass **`detector_model`** (paths under `backend/` are resolved automatically).
 
 ---
 
@@ -272,11 +290,13 @@ flowchart LR
   subgraph UI["React + Vite + Tailwind"]
     W[Workflow Studio]
     T[Training Studio]
+    S[Session learning]
   end
 
   subgraph API["FastAPI :8000"]
     P["POST /api/pipeline/run"]
     TR["/api/training/*"]
+    BS["POST /api/browser-session/analyze"]
     ST["/datasets/images/train"]
   end
 
@@ -289,6 +309,7 @@ flowchart LR
 
   W --> P
   T --> TR
+  S --> BS
   W -. preview .-> ST
 
   P --> D --> C --> L --> O
@@ -298,17 +319,24 @@ flowchart LR
 <summary><b>Repository layout</b></summary>
 
 ```
-cv-llm-pipeline/
+vision-workbench/
 ├── backend/
-│   ├── main.py              # App entry, pipeline endpoint, static mounts
-│   ├── routers/training.py   # Dataset + training APIs
-│   └── engine/               # Pipeline + nodes (decompose, context, llm, output)
+│   ├── main.py                        # App entry, pipeline endpoint, static mounts
+│   ├── routers/training.py            # Dataset + training APIs
+│   ├── routers/browser_session.py     # Screen-recording ingest, frame sampling, VLM hints
+│   └── engine/                        # Pipeline + nodes (decompose, context, llm, output)
 ├── frontend/
-│   └── src/                  # App shell, Workflow + Training UIs
+│   └── src/
+│       └── components/
+│           ├── BrowserSessionLearning.tsx  # In-browser recorder + analysis UI
+│           ├── TrainingStudio.tsx
+│           └── PipelineLinearBuilder.tsx
+├── extensions/
+│   └── pointer-logger/                # Chrome MV3 extension — logs pointerdown + rects
 ├── docs/
+│   ├── browser-session-recording-learning.md
 │   ├── readme-banner.svg
-│   ├── preview-workflow-studio.svg
-│   └── preview-training-studio.svg
+│   └── screenshots/
 └── README.md
 ```
 
@@ -324,6 +352,7 @@ cv-llm-pipeline/
 - **Node.js** (for Vite; LTS recommended)
 - **OpenAI API key** as `OPENAI_KEY` for LLM steps ([platform.openai.com](https://platform.openai.com/))
 - Ultralytics will fetch YOLO weights on first use (network access)
+- **Chrome / Chromium** for in-browser recording (`getDisplayMedia` + `MediaRecorder`; `localhost` is an allowed secure context — no HTTPS needed)
 
 ### Backend
 
@@ -356,7 +385,7 @@ Create a `.env` file at the **project root** and/or under `backend/` (the code l
 
 | Variable | Used for |
 |----------|-----------|
-| `OPENAI_KEY` | Required when running **LLM / vision** nodes (`LLMNode`). |
+| `OPENAI_KEY` | Required when running **LLM / vision** nodes (`LLMNode`), and when **Session learning** uses **Explain transitions with VLM**. |
 
 Training flows may use additional keys depending on your `routers/training.py` setup—check that file for `load_dotenv` and client initialization.
 
@@ -370,6 +399,8 @@ Training flows may use additional keys depending on your `routers/training.py` s
 |--------|------|---------|
 | `POST` | `/api/pipeline/run` | Multipart: image + `pipeline_config` JSON → regions + graph |
 | — | `/api/training/*` | Dataset upload, annotations, training job control |
+| `POST` | `/api/browser-session/analyze` | Multipart: video (recorded in-browser as WebM or MP4) + sampling options → timeline, interaction hints, optional VLM hypotheses (`use_vlm`, `max_vlm_hints`), optional **`pointer_events_json`** (array or `{events:[]}`) for supervision merge. Handles Chrome `MediaRecorder` WebM with missing duration metadata. |
+| `DELETE` | `/api/browser-session/session/{id}` | Remove cached thumbnails for a session |
 | `GET` | `/datasets/images/train/...` | Training image assets (static) |
 
 Interactive docs: **`http://localhost:8000/docs`** (Swagger UI).
